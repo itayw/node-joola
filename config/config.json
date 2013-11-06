@@ -1,0 +1,9 @@
+{
+  "bootstrap": {
+    "enabled": "true"
+  },
+  "engine": {
+    "host": "http://localhost:8080",
+    "content": "http://localhost:80"
+  }
+}
