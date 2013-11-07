@@ -1,9 +1,12 @@
 {
+  "version": "0.0.1",
   "bootstrap": {
     "enabled": "true"
   },
-  "engine": {
-    "host": "http://localhost:8080",
+  "api": {
+    "host": "localhost",
+    "port": "40004",
+    "secure": false,
     "content": "http://localhost:80"
   }
 }
