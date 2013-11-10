@@ -6617,7 +6617,7 @@ process.chdir = function (dir) {
 };
 
 },{}],38:[function(require,module,exports){
-module.exports={
+module.exports=module.exports={
   "version": "0.0.1",
   "bootstrap": {
     "enabled": "true"
@@ -6837,7 +6837,7 @@ _events._id = 'events';
 
 module.exports = exports = _events;
 
-},{"eventemitter2":54}],43:[function(require,module,exports){
+},{"eventemitter2":55}],43:[function(require,module,exports){
 /**
  *  joola.io
  *
@@ -6870,6 +6870,14 @@ common.mixin = function (origin, add) {
     else
       origin[keys[i]] = add[keys[i]];
   }
+  return origin;
+};
+
+//custom mixin for functions
+common.inherit = function (origin, add) {
+  Object.keys(origin).forEach(function (key) {
+    add.prototype[key] = origin.prototype[key];
+  });
   return origin;
 };
 
@@ -6974,9 +6982,9 @@ logger._log = function (level, message, callback) {
   }
 
   if (typeof message === 'object')
-    message = '[' + new Date().format('hh:nn:ss.fff') + '] ' + JSON.stringify(message)
+    message = '[' + new Date().format('hh:nn:ss.fff') + '] ' + JSON.stringify(message);
   else
-    message = '[' + new Date().format('hh:nn:ss.fff') + '] ' + message
+    message = '[' + new Date().format('hh:nn:ss.fff') + '] ' + message;
 
   if (joolaio.options.isBrowser) {
     if (['silly', 'debug'].indexOf(level) == -1)
@@ -7107,7 +7115,7 @@ if (joolaio.options.debug.enabled)
       console.trace();
   });
 
-},{"../package.json":55,"./common/api":40,"./common/config":41,"./common/events":42,"./common/index":43,"./common/logger":44,"./objects/index":47,"./viz/index":49,"async":53,"eventemitter2":54}],46:[function(require,module,exports){
+},{"../package.json":56,"./common/api":40,"./common/config":41,"./common/events":42,"./common/index":43,"./common/logger":44,"./objects/index":47,"./viz/index":51,"async":54,"eventemitter2":55}],46:[function(require,module,exports){
 /**
  *  joola.io
  *
@@ -7196,15 +7204,58 @@ reports.list = function (callback) {
  *  @license GPL-3.0+ <http://spdx.org/licenses/GPL-3.0+>
  */
 
-var viz = exports;
-viz._id = 'viz';
+var Timeline = module.exports = function (options, callback) {
+  joolaio.events.emit('timeline.init.start');
 
-viz.pickers = require('./pickers/index');
+  //mixin
+  for (var x in require('./_proto'))
+    this[x] = require('./_proto')[x];
 
-viz.stam = function (callback) {
-  return viz.pickers.init(callback);
+  var self = this;
+
+  this._id = '_timeline';
+  this.options = {
+    legend: true,
+    container: '#test'
+  };
+
+  if (typeof this.options.container === 'string') {
+    this.options.container = $($(this.options.container)[0]);
+  }
+
+  this.verify = function (options, callback) {
+    if (options.container) {
+      return callback(null);
+    }
+    else {
+      return callback(new Error('cannot find container for the timeline'));
+    }
+  };
+
+  //here we go
+  try {
+    joolaio.common.mixin(this, options, options);
+
+    self.verify(this.options, function (err) {
+      if (err)
+        throw err;
+
+      joolaio.events.emit('timeline.init.finish', self);
+      return callback(null);
+    });
+  }
+  catch (err) {
+    self.onError(err, callback)
+  }
+
+  self.options.container.Timeline = function () {
+    return self.find(this);
+  };
+
+  return self;
 };
-},{"./pickers/index":52}],50:[function(require,module,exports){
+
+},{"./_proto":50}],50:[function(require,module,exports){
 /**
  *  joola.io
  *
@@ -7216,13 +7267,33 @@ viz.stam = function (callback) {
  *  @license GPL-3.0+ <http://spdx.org/licenses/GPL-3.0+>
  */
 
-var proto = module.exports = exports;
-proto._id = 'proto';
+var proto = exports;
+proto._id = '_proto';
+
+proto.markContainer = function (container, attr) {
+  container.addClass('joolaio');
+  container.attr('data-domain', 'joolaio');
+
+  attr.forEach(function (a) {
+    console.log(a);
+  });
+};
 
 proto.baseHTML = function (callback) {
   return callback(null, '<br/>');
 };
 
+proto.onError = function (err, callback) {
+  if (err && err.message)
+    joolaio.logger.error(err.message);
+  else
+    joolaio.logger.error(err);
+  return callback(err);
+};
+
+proto.find = function (obj) {
+
+};
 },{}],51:[function(require,module,exports){
 /**
  *  joola.io
@@ -7235,26 +7306,38 @@ proto.baseHTML = function (callback) {
  *  @license GPL-3.0+ <http://spdx.org/licenses/GPL-3.0+>
  */
 
+var viz = exports;
+viz._id = 'viz';
+
+//pickers
+viz.pickers = require('./pickers/index');
+
+//panels
+
+//charts
+viz.Timeline = require('./Timeline');
+
+//onscreen
+viz.onscreen = [];
+
+viz.stam = function (callback) {
+  return viz.pickers.init(callback);
+};
+},{"./Timeline":49,"./pickers/index":53}],52:[function(require,module,exports){
+/**
+ *  joola.io
+ *
+ *  Copyright Joola Smart Solutions, Ltd. <info@joo.la>
+ *
+ *  Licensed under GNU General Public License 3.0 or later.
+ *  Some rights reserved. See LICENSE, AUTHORS.
+ *
+ *  @license GPL-3.0+ <http://spdx.org/licenses/GPL-3.0+>
+ */
+
 var datepicker = exports;
-var proto = require('./_proto');
 
-datepicker = joolaio.common.mixin(datepicker, proto);
-datepicker._base = joolaio.common.extend({}, joolaio.common.mixin(datepicker, proto));
-datepicker._id = 'datepicker';
-
-
-datepicker.baseHTML = function (callback) {
-  var html = '<html></html>';
-  this._base.baseHTML(function (err, _html) {
-    html += _html;
-    return callback(null, html);
-  });
-};
-
-datepicker.init = function (callback) {
-  return this.baseHTML(callback);
-};
-},{"./_proto":50}],52:[function(require,module,exports){
+},{}],53:[function(require,module,exports){
 /**
  *  joola.io
  *
@@ -7272,11 +7355,12 @@ pickers._id = 'pickers';
 pickers.datepicker = require('./datepicker');
 
 pickers.init = function (callback) {
-  return pickers.datepicker.init(callback);
+  return callback(null);
+  //return pickers.datepicker.init(callback);
 };
 
 
-},{"./datepicker":51}],53:[function(require,module,exports){
+},{"./datepicker":52}],54:[function(require,module,exports){
 var process=require("__browserify_process");/*global setImmediate: false, setTimeout: false, console: false */
 (function () {
 
@@ -8233,7 +8317,7 @@ var process=require("__browserify_process");/*global setImmediate: false, setTim
 
 }());
 
-},{"__browserify_process":37}],54:[function(require,module,exports){
+},{"__browserify_process":37}],55:[function(require,module,exports){
 var process=require("__browserify_process");;!function(exports, undefined) {
 
   var isArray = Array.isArray ? Array.isArray : function _isArray(obj) {
@@ -8796,8 +8880,8 @@ var process=require("__browserify_process");;!function(exports, undefined) {
 
 }(typeof process !== 'undefined' && typeof process.title !== 'undefined' && typeof exports !== 'undefined' ? exports : window);
 
-},{"__browserify_process":37}],55:[function(require,module,exports){
-module.exports={
+},{"__browserify_process":37}],56:[function(require,module,exports){
+module.exports=module.exports={
   "name": "node-joole",
   "version": "0.0.1",
   "dependencies": {
