@@ -11,8 +11,24 @@
 
 var joolaio = require('../lib/index');
 
-joolaio.init({}, function () {
-//  console.log(joolaio);
-})
+joolaio.init({
+  isBrowser: false,
+  debug: {
+    enabled: true,
+    events: {
+      enabled: true,
+      trace: false
+    },
+    functions: {
+      enabled: false
+    }
+  }
+}, function () {
+ 
+});
 
-//joolaio.logger.info('test');
+joolaio.events.on('core.init.finish', function () {
+  new joolaio.viz.Timeline({}, function (err, viz) {
+    console.log('done', viz)
+  });
+});

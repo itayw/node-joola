@@ -9,5 +9,14 @@
 
 <script src="http://code.jquery.com/jquery-1.10.2.min.js"></script>
 <script src="../bundle.js"></script>
+
+<script>
+    joolaio.events.on('core.init.finish', function () {
+        new joolaio.viz.Timeline({container: '#test'}, function (err, viz) {
+        });
+    });
+
+</script>
+
 </body>
 </html>

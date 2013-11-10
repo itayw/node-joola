@@ -6686,14 +6686,15 @@ api.getJSON = function (options, callback) {
     });
 
     res.on('end', function () {
+      var obj;
       try {
-        var obj = JSON.parse(output);
-        return callback(null, obj);
+        obj = JSON.parse(output);
       }
       catch (ex) {
-        joolaio.logger.error('[api] Received malformed JSON from server: ' + options.host + ':' + options.port + options.path);
+        joolaio.logger.error('[api] Received malformed JSON from server: ' + options.host + ':' + options.port + options.path + '. Error: ' + ex.message);
         return callback('Received malformed JSON from server');
       }
+      return callback(null, obj);
     });
   });
 
@@ -6719,7 +6720,6 @@ api.fetch = function (endpoint, callback) {
   };
 
   self.getJSON(options, function (err, result) {
-
     return callback(err, result);
   });
 }; 
@@ -6858,15 +6858,19 @@ common = util._extend(common, util);
 common._id = 'common';
 common.extend = common._extend;
 
-common.mixin = function (origin, add) {
+common.mixin = function (origin, add, overwrite) {
   // Don't do anything if add isn't an object
   if (!add || typeof add !== 'object') return origin;
 
   var keys = Object.keys(add);
   var i = keys.length;
   while (i--) {
-    if (origin.hasOwnProperty(keys[i]))
-      common.extend(origin[keys[i]], add[keys[i]]);
+    if (origin.hasOwnProperty(keys[i])) {
+      if (overwrite)
+        origin[keys[i]] = add[keys[i]];
+      else
+        common.extend(origin[keys[i]], add[keys[i]]);
+    }
     else
       origin[keys[i]] = add[keys[i]];
   }
@@ -6881,6 +6885,7 @@ common.inherit = function (origin, add) {
   return origin;
 };
 
+//hook functions for timings
 common.hookEvents = function (obj) {
   var name, fn, obj_id;
 
@@ -6899,10 +6904,10 @@ common.hookEvents = function (obj) {
           var self = this;
           var timeID = 'Function ' + (obj_id ? obj_id + '.' : '') + name;
 
-          if (joolaio.options.debug.functions.enabled)
+          if (joolaio.options.debug.functions.enabled && console.time)
             console.time(timeID);
           var result = fn.apply(self, arguments);
-          if (joolaio.options.debug.functions.enabled) {
+          if (joolaio.options.debug.functions.enabled && console.time) {
             console.timeEnd(timeID);
           }
           return result;
@@ -6914,7 +6919,7 @@ common.hookEvents = function (obj) {
   }
 };
 
-
+//prototype additions
 Date.prototype.format = function (formatString) {
   var formatDate = this;
   var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -6952,6 +6957,9 @@ Date.prototype.format = function (formatString) {
   return formatString;
 };
 
+common.uuid = function () {
+  return Math.floor(Math.random() * 10) + parseInt(new Date().getTime()).toString(36).toLowerCase();
+};
 },{"util":15}],44:[function(require,module,exports){
 /**
  *  joola.io
@@ -6986,7 +6994,7 @@ logger._log = function (level, message, callback) {
   else
     message = '[' + new Date().format('hh:nn:ss.fff') + '] ' + message;
 
-  if (joolaio.options.isBrowser) {
+  if (joolaio.options.isBrowser && console.debug) {
     if (['silly', 'debug'].indexOf(level) == -1)
       console[level](message);
     else if (joolaio.options.debug.enabled && ['silly', 'debug'].indexOf(level) > -1)
@@ -7073,6 +7081,15 @@ joolaio.init = function (options, callback) {
   joolaio.events.emit('core.init.start');
   joolaio.logger.info('Starting joola.io client SDK, version ' + require('../package.json').version);
 
+  //jQuery bypass for non-browser execution
+  if (!joolaio.options.isBrowser) {
+    $ = function () {
+      return null;
+    };
+    $.prototype.fn = function () {
+      return null;
+    };
+  }
   joolaio.config.init(function (err) {
     if (err)
       return callback(err);
@@ -7089,12 +7106,11 @@ joolaio.init = function (options, callback) {
     async.parallel(calls, function (err) {
       if (err)
         return callback(err);
-      
+
       joolaio.events.emit('core.init.finish');
       if (callback)
         return callback(null, joolaio);
     });
-
   });
 };
 
@@ -7114,6 +7130,7 @@ if (joolaio.options.debug.enabled)
     if (joolaio.options.debug.events.enabled && joolaio.options.debug.events.trace)
       console.trace();
   });
+
 
 },{"../package.json":56,"./common/api":40,"./common/config":41,"./common/events":42,"./common/index":43,"./common/logger":44,"./objects/index":47,"./viz/index":51,"async":54,"eventemitter2":55}],46:[function(require,module,exports){
 /**
@@ -7205,56 +7222,88 @@ reports.list = function (callback) {
  */
 
 var Timeline = module.exports = function (options, callback) {
+  if (!callback)
+    callback = function () {
+    };
   joolaio.events.emit('timeline.init.start');
 
   //mixin
-  for (var x in require('./_proto'))
+  this._super = {};
+  for (var x in require('./_proto')) {
     this[x] = require('./_proto')[x];
+    this._super[x] = require('./_proto')[x];
+  }
 
   var self = this;
 
   this._id = '_timeline';
+  this.uuid = joolaio.common.uuid();
   this.options = {
     legend: true,
-    container: '#test'
+    container: null,
+    $container: null
   };
 
-  if (typeof this.options.container === 'string') {
-    this.options.container = $($(this.options.container)[0]);
-  }
-
   this.verify = function (options, callback) {
-    if (options.container) {
-      return callback(null);
-    }
-    else {
-      return callback(new Error('cannot find container for the timeline'));
-    }
+
+
+    return this._super.verify(options, callback);
   };
 
   //here we go
   try {
-    joolaio.common.mixin(this, options, options);
-
-    self.verify(this.options, function (err) {
+    joolaio.common.mixin(self.options, options, true);
+    self.verify(self.options, function (err) {
       if (err)
-        throw err;
+        return callback(err);
 
-      joolaio.events.emit('timeline.init.finish', self);
-      return callback(null);
+      self.options.$container = $(self.options.container);
+      self.markContainer(self.options.$container, [
+        {'type': 'timeline'},
+        {'uuid': self.uuid}
+      ], function (err) {
+        if (err)
+          return callback(err);
+
+        joolaio.viz.onscreen.push(self);
+
+        joolaio.events.emit('timeline.init.finish', self);
+        return callback(null);
+      });
     });
   }
   catch (err) {
-    self.onError(err, callback)
+    return self.onError(err, callback)
   }
 
-  self.options.container.Timeline = function () {
-    return self.find(this);
-  };
-
+  callback(null, self);
   return self;
 };
 
+if (typeof (jQuery) != 'undefined') {
+  $.fn.Timeline = function (options, callback) {
+    var result = null;
+    var uuid = this.attr('jio-uuid');
+    if (!uuid) {
+      //create new
+      if (!options)
+        options = {};
+      options.container = this.get(0);
+      result = new joolaio.viz.Timeline(options, callback).options.$container;
+    }
+    else {
+      //return existing
+      var found = false;
+      joolaio.viz.onscreen.forEach(function (viz) {
+        if (viz.uuid == uuid && !found) {
+          found = true;
+          result = viz;
+        }
+      });
+    }
+    return result;
+  };
+}
 },{"./_proto":50}],50:[function(require,module,exports){
 /**
  *  joola.io
@@ -7270,13 +7319,34 @@ var Timeline = module.exports = function (options, callback) {
 var proto = exports;
 proto._id = '_proto';
 
-proto.markContainer = function (container, attr) {
-  container.addClass('joolaio');
-  container.attr('data-domain', 'joolaio');
+proto.markContainer = function (container, attr, callback) {
+  if (!callback) callback = function () {
+  };
 
-  attr.forEach(function (a) {
-    console.log(a);
-  });
+  try {
+    container.attr('jio-domain', 'joolaio');
+
+    attr.forEach(function (a) {
+      Object.keys(a).forEach(function (key) {
+        container.attr('jio-' + key, a[key]);
+      });
+    });
+  }
+  catch (ex) {
+    return callback(ex);
+  }
+  return callback(null);
+};
+
+proto.verify = function (options, callback) {
+  if (!options.container)
+    return callback(new Error('no container specified for timeline.'));
+
+  var $container = $(options.container);
+  if ($container == null)
+    return callback(new Error('cannot find container for the timeline.'));
+  
+  return callback(null);
 };
 
 proto.baseHTML = function (callback) {
