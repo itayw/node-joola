@@ -1,0 +1,1 @@
+watchify ../lib/browser.js -o ../bundle.js
